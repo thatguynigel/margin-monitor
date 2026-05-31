@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>EL/MM · EL/NLV Daily Monitor</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  // ── CONFIGURE THESE AFTER CREATING YOUR SUPABASE PROJECT ──────────────────
+  const SUPABASE_URL  = 'https://yyjmppcaagiqecygbnvt.supabase.co';
+  const SUPABASE_KEY  = 'sb_publishable_4rB6XFfZFrrUlkv0pxtn_Q_r87aZrbt';
+  const ACCESS_PIN    = '011115';             // e.g. '2025' — change this
+  // ──────────────────────────────────────────────────────────────────────────
+</script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #ffffff; --bg-secondary: #f5f5f3; --bg-tertiary: #eeede9;
+  --text-primary: #1a1a18; --text-secondary: #5f5e5a; --text-tertiary: #888780;
+  --border: rgba(0,0,0,0.12); --border-md: rgba(0,0,0,0.20);
+  --radius-md: 8px; --radius-lg: 12px;
+  --font-mono: 'Courier New', Courier, monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --green-fill: #EAF3DE; --green-text: #27500A; --green-bar: #3B6D11; --green-left: #3B6D11;
+  --amber-fill: #FAEEDA; --amber-text: #633806; --amber-bar: #BA7517; --amber-left: #BA7517;
+  --red-fill: #FCEBEB;   --red-text: #791F1F;   --red-bar: #A32D2D;   --red-left: #A32D2D;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a18; --bg-secondary: #222220; --bg-tertiary: #2c2c2a;
+    --text-primary: #f0ede6; --text-secondary: #b4b2a9; --text-tertiary: #888780;
+    --border: rgba(255,255,255,0.10); --border-md: rgba(255,255,255,0.18);
+    --green-fill: #173404; --green-text: #C0DD97; --green-bar: #639922; --green-left: #639922;
+    --amber-fill: #412402; --amber-text: #FAC775; --amber-bar: #EF9F27; --amber-left: #EF9F27;
+    --red-fill: #501313;   --red-text: #F7C1C1;   --red-bar: #E24B4A;   --red-left: #E24B4A;
+  }
+}
+body {
+  background: var(--bg); color: var(--text-primary);
+  font-family: var(--font-sans); font-size: 14px; line-height: 1.6;
+  padding: 24px 20px; max-width: 740px; margin: 0 auto;
+}
+.section-label {
+  font-size: 10px; color: var(--text-tertiary); letter-spacing: 0.12em;
+  text-transform: uppercase; margin-bottom: 10px; font-family: var(--font-mono);
+}
+.input-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px; margin-bottom: 20px;
+}
+.input-row { display: flex; flex-direction: column; gap: 4px; }
+.input-row label { font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono); }
+.input-row input[type="number"] {
+  font-family: var(--font-mono); font-size: 14px;
+  background: var(--bg-secondary); border: 0.5px solid var(--border-md);
+  border-radius: var(--radius-md); padding: 8px 10px;
+  color: var(--text-primary); outline: none; transition: border-color 0.2s;
+}
+.input-row input[type="number"]:focus { border-color: var(--amber-bar); }
+.ratio-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+.ratio-card {
+  background: var(--bg-secondary); border-radius: var(--radius-md);
+  padding: 14px 16px; border-left: 3px solid transparent; transition: border-color 0.3s;
+}
+.ratio-card.safe { border-left-color: var(--green-left); }
+.ratio-card.warn { border-left-color: var(--amber-left); }
+.ratio-card.crit { border-left-color: var(--red-left); }
+.card-top { display: flex; justify-content: space-between; align-items: flex-start; }
+.card-meta-label { font-size: 10px; color: var(--text-tertiary); font-family: var(--font-mono); margin-bottom: 4px; letter-spacing: 0.06em; }
+.ratio-value { font-size: 26px; font-weight: 500; font-family: var(--font-mono); line-height: 1; }
+.ratio-value.safe { color: var(--green-bar); }
+.ratio-value.warn { color: var(--amber-bar); }
+.ratio-value.crit { color: var(--red-bar); }
+.ratio-sub { font-size: 10px; color: var(--text-tertiary); margin-top: 3px; font-family: var(--font-mono); }
+.badge { font-size: 10px; padding: 2px 8px; border-radius: 3px; font-family: var(--font-mono); white-space: nowrap; }
+.badge.safe { background: var(--green-fill); color: var(--green-text); }
+.badge.warn { background: var(--amber-fill); color: var(--amber-text); }
+.badge.crit { background: var(--red-fill); color: var(--red-text); }
+.bar-track { background: var(--border); border-radius: 2px; height: 4px; margin: 10px 0 3px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 2px; transition: width 0.35s ease; }
+.bar-fill.safe { background: var(--green-bar); }
+.bar-fill.warn { background: var(--amber-bar); }
+.bar-fill.crit { background: var(--red-bar); }
+.threshold-row { display: flex; justify-content: space-between; font-size: 9px; color: var(--text-tertiary); font-family: var(--font-mono); }
+.card-msg { font-size: 11px; color: var(--text-secondary); margin-top: 8px; line-height: 1.5; }
+.divider { border: none; border-top: 0.5px solid var(--border); margin: 18px 0; }
+.stress-controls {
+  background: var(--bg-secondary); border-radius: var(--radius-md);
+  padding: 14px 16px; margin-bottom: 12px;
+}
+.slider-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.slider-row:last-child { margin-bottom: 0; }
+.slider-label { font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono); min-width: 170px; }
+.slider-row input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--amber-bar); }
+.slider-val { font-size: 12px; font-family: var(--font-mono); font-weight: 500; color: var(--text-primary); min-width: 44px; text-align: right; }
+.stress-results-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px; }
+.stress-mini-card { border: 0.5px solid var(--border); border-radius: var(--radius-md); padding: 10px 12px; }
+.stress-mini-label { font-size: 10px; color: var(--text-tertiary); font-family: var(--font-mono); margin-bottom: 3px; }
+.stress-mini-val { font-size: 22px; font-weight: 500; font-family: var(--font-mono); }
+.stress-mini-val.safe { color: var(--green-bar); }
+.stress-mini-val.warn { color: var(--amber-bar); }
+.stress-mini-val.crit { color: var(--red-bar); }
+.stress-details { border: 0.5px solid var(--border); border-radius: var(--radius-md); padding: 10px 12px; }
+.stress-row { display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding: 4px 0; border-bottom: 0.5px solid var(--border); font-family: var(--font-mono); }
+.stress-row:last-child { border-bottom: none; padding-bottom: 0; }
+.stress-label-txt { color: var(--text-secondary); }
+.stress-verdict { font-size: 11px; margin-top: 10px; padding-top: 8px; border-top: 0.5px solid var(--border); font-family: var(--font-mono); }
+.preset-row { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; }
+.preset-btn {
+  font-family: var(--font-mono); font-size: 10px; padding: 4px 10px;
+  border-radius: 3px; border: 0.5px solid var(--border-md);
+  background: transparent; color: var(--text-secondary); cursor: pointer;
+  transition: all 0.15s; letter-spacing: 0.04em;
+}
+.preset-btn:hover { background: var(--bg-secondary); color: var(--text-primary); border-color: var(--amber-bar); }
+.preset-btn.active { background: var(--amber-fill); color: var(--amber-text); border-color: var(--amber-bar); }
+.preset-crisis { border-color: var(--red-left); color: var(--red-bar); }
+.preset-crisis:hover { background: var(--red-fill); color: var(--red-text); border-color: var(--red-bar); }
+.preset-crisis.active { background: var(--red-fill); color: var(--red-text); border-color: var(--red-bar); }
+.log-table-wrap { overflow-x: auto; }
+.log-header {
+  display: grid; grid-template-columns: 155px 72px 72px 72px 58px 62px 58px; gap: 6px;
+  font-size: 10px; color: var(--text-tertiary); font-family: var(--font-mono);
+  letter-spacing: 0.06em; padding: 4px 0 6px; border-bottom: 0.5px solid var(--border);
+  min-width: 570px;
+}
+.log-entry {
+  display: grid; grid-template-columns: 155px 72px 72px 72px 58px 62px 58px; gap: 6px;
+  font-size: 11px; font-family: var(--font-mono); padding: 6px 0;
+  border-bottom: 0.5px solid var(--border); align-items: center; min-width: 570px;
+}
+.log-entry:last-child { border-bottom: none; }
+.log-scroll { max-height: 220px; overflow-y: auto; overflow-x: auto; }
+.log-empty { font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono); padding: 10px 0; }
+.sync-notice {
+  background: var(--bg-secondary); border-radius: var(--radius-md);
+  padding: 10px 14px; margin-bottom: 12px; border-left: 3px solid var(--amber-left);
+}
+.sync-notice p { font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono); line-height: 1.7; }
+.sync-notice strong { color: var(--text-primary); font-weight: 500; }
+.action-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.btn {
+  font-family: var(--font-mono); font-size: 11px; padding: 7px 14px;
+  border-radius: var(--radius-md); border: 0.5px solid var(--border-md);
+  background: transparent; color: var(--text-primary); cursor: pointer;
+  letter-spacing: 0.04em; transition: background 0.15s, border-color 0.15s;
+}
+.btn:hover { background: var(--bg-secondary); border-color: var(--amber-bar); }
+.btn.primary { flex: 1; }
+.log-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.log-btn-group { display: flex; gap: 6px; }
+.placeholder { text-align: center; color: var(--text-tertiary); font-size: 12px; font-family: var(--font-mono); padding: 32px 0; }
+h1 { font-size: 15px; font-weight: 500; color: var(--text-primary); font-family: var(--font-mono); margin-bottom: 3px; }
+.subtitle { font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono); margin-bottom: 20px; }
+#csv-import { display: none; }
+/* PIN gate */
+.pin-gate {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 60vh; gap: 16px;
+}
+.pin-gate h2 { font-size: 14px; font-family: var(--font-mono); font-weight: 500; color: var(--text-primary); }
+.pin-gate p  { font-size: 11px; font-family: var(--font-mono); color: var(--text-tertiary); }
+.pin-input {
+  font-family: var(--font-mono); font-size: 22px; letter-spacing: 0.3em;
+  text-align: center; width: 160px; padding: 10px;
+  background: var(--bg-secondary); border: 0.5px solid var(--border-md);
+  border-radius: var(--radius-md); color: var(--text-primary); outline: none;
+}
+.pin-input:focus { border-color: var(--amber-bar); }
+.pin-error { font-size: 11px; font-family: var(--font-mono); color: var(--red-bar); }
+.toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  background: var(--text-primary); color: var(--bg); font-family: var(--font-mono);
+  font-size: 11px; padding: 8px 18px; border-radius: var(--radius-md);
+  opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100; white-space: nowrap;
+}
+.toast.show { opacity: 1; }
+@media (max-width: 500px) {
+  .ratio-grid, .stress-results-grid, .input-grid { grid-template-columns: 1fr; }
+  .slider-label { min-width: 120px; font-size: 10px; }
+}
+</style>
+</head>
+<body>
+
+<div id="pin-gate" class="pin-gate">
+  <h2>Margin Monitor</h2>
+  <p>Enter your PIN to continue</p>
+  <input class="pin-input" type="password" id="pin-input" maxlength="8" placeholder="····" autocomplete="off" />
+  <button onclick="checkPin()" style="font-family:var(--font-mono); font-size:12px; padding:8px 28px; border-radius:var(--radius-md); border:0.5px solid var(--border-md); background:var(--amber-bar); color:#fff; cursor:pointer; letter-spacing:0.06em;">Unlock</button>
+  <div class="pin-error" id="pin-error" style="display:none;">Incorrect PIN</div>
+</div>
+
+<div id="app" style="display:none;">
+<div class="section-label" style="margin-bottom:6px;">Options margin monitor · v2</div>
+<h1>EL / MM &amp; EL / NLV daily monitor</h1>
+<p class="subtitle">Short put portfolio · margin safety &amp; capital utilisation</p>
+
+<div class="section-label">Portfolio inputs</div>
+<div class="input-grid">
+  <div class="input-row">
+    <label>Excess liquidity (EL)</label>
+    <input type="number" id="el" placeholder="e.g. 250000" min="0" step="1000" />
+  </div>
+  <div class="input-row">
+    <label>Maintenance margin (MM)</label>
+    <input type="number" id="mm" placeholder="e.g. 100000" min="1" step="1000" />
+  </div>
+  <div class="input-row">
+    <label>Net liq. value (NLV)</label>
+    <input type="number" id="nlv" placeholder="e.g. 500000" min="1" step="1000" />
+  </div>
+</div>
+
+<div id="results" style="display:none;">
+
+  <div class="section-label">Live ratios</div>
+  <div class="ratio-grid">
+    <div id="card-elmm" class="ratio-card">
+      <div class="card-top">
+        <div>
+          <div class="card-meta-label">EL / MM</div>
+          <div id="val-elmm" class="ratio-value">—</div>
+          <div class="ratio-sub">floor 1.8× · target 2.5×</div>
+        </div>
+        <div id="badge-elmm" class="badge">—</div>
+      </div>
+      <div class="bar-track"><div id="bar-elmm" class="bar-fill" style="width:0%"></div></div>
+      <div class="threshold-row"><span>0×</span><span>1.8×</span><span>2.5×</span><span>4×+</span></div>
+      <div id="msg-elmm" class="card-msg"></div>
+    </div>
+    <div id="card-elnlv" class="ratio-card">
+      <div class="card-top">
+        <div>
+          <div class="card-meta-label">EL / NLV</div>
+          <div id="val-elnlv" class="ratio-value">—</div>
+          <div class="ratio-sub">utilisation gauge</div>
+        </div>
+        <div id="badge-elnlv" class="badge">—</div>
+      </div>
+      <div class="bar-track"><div id="bar-elnlv" class="bar-fill" style="width:0%"></div></div>
+      <div class="threshold-row"><span>0%</span><span>25%</span><span>50%</span><span>75%+</span></div>
+      <div id="msg-elnlv" class="card-msg"></div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="section-label">Stress scenario simulator</div>
+
+  <div class="preset-row">
+    <span style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono);">Presets:</span>
+    <button class="preset-btn" onclick="setPreset(10,8,'mild')">Mild (−10% / +8%)</button>
+    <button class="preset-btn" onclick="setPreset(20,15,'moderate')">Moderate (−20% / +15%)</button>
+    <button class="preset-btn" onclick="setPreset(35,25,'severe')">Severe (−35% / +25%)</button>
+    <button class="preset-btn" onclick="setPreset(57,60,'extreme')">Extreme (−57% / +60%)</button>
+    <button class="preset-btn preset-crisis" onclick="setPreset(80,100,'depression')">Depression / Crisis (−80% / +100%)</button>
+  </div>
+
+  <div class="stress-controls">
+    <div class="slider-row">
+      <span class="slider-label">Equity portfolio drop</span>
+      <input type="range" id="eq-drop" min="1" max="90" step="1" value="20" oninput="onSlider()" />
+      <span class="slider-val" id="eq-drop-val">−20%</span>
+    </div>
+    <div class="slider-row">
+      <span class="slider-label">MM requirement increase</span>
+      <input type="range" id="mm-rise" min="1" max="150" step="1" value="15" oninput="onSlider()" />
+      <span class="slider-val" id="mm-rise-val">+15%</span>
+    </div>
+    <div id="scenario-context" style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono);margin-top:8px;padding-top:8px;border-top:0.5px solid var(--border);line-height:1.6;"></div>
+  </div>
+
+  <div class="stress-results-grid">
+    <div class="stress-mini-card">
+      <div class="stress-mini-label">Stressed EL / MM</div>
+      <div id="s-val-elmm" class="stress-mini-val">—</div>
+      <div style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono);margin-top:3px;">floor 1.8×</div>
+      <div class="bar-track" style="margin-top:8px;"><div id="s-bar-elmm" class="bar-fill" style="width:0%"></div></div>
+    </div>
+    <div class="stress-mini-card">
+      <div class="stress-mini-label">Stressed EL / NLV</div>
+      <div id="s-val-elnlv" class="stress-mini-val">—</div>
+      <div style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono);margin-top:3px;">utilisation</div>
+      <div class="bar-track" style="margin-top:8px;"><div id="s-bar-elnlv" class="bar-fill" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <div class="stress-details">
+    <div class="stress-row"><span class="stress-label-txt">Stressed EL</span><span id="s-el">—</span></div>
+    <div class="stress-row"><span class="stress-label-txt">Stressed NLV</span><span id="s-nlv-out">—</span></div>
+    <div class="stress-row"><span class="stress-label-txt">Stressed MM</span><span id="s-mm">—</span></div>
+    <div class="stress-row"><span class="stress-label-txt">EL buffer vs 1.8× floor</span><span id="s-buffer">—</span></div>
+    <div id="stress-verdict" class="stress-verdict"></div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="log-table-wrap">
+  <div class="log-header">
+    <span>Date / time</span><span>NLV</span><span>EL</span><span>MM</span><span>EL/MM</span><span>EL/NLV</span><span>Status</span>
+  </div>
+  <div class="log-scroll"><div id="log-entries"></div></div>
+  </div>
+
+  <div class="action-row">
+    <button class="btn primary" onclick="logEntry()">Log today's reading</button>
+    <button class="btn" onclick="exportCSV()">Export CSV</button>
+    <button class="btn" onclick="clearLog()">Clear log</button>
+  </div>
+</div>
+
+<div id="placeholder" class="placeholder">Enter EL, MM and NLV above to compute ratios</div>
+</div><!-- end #app -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Supabase init ────────────────────────────────────────────────────────────
+const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ── PIN gate ─────────────────────────────────────────────────────────────────
+async function checkPin() {
+  const pinInput = document.getElementById('pin-input');
+  if (pinInput.value === ACCESS_PIN) {
+    document.getElementById('pin-gate').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    await loadLog();
+  } else {
+    document.getElementById('pin-error').style.display = 'block';
+    pinInput.value = '';
+    setTimeout(() => document.getElementById('pin-error').style.display='none', 2000);
+  }
+}
+
+const pinInput = document.getElementById('pin-input');
+pinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') checkPin(); });
+pinInput.focus();
+
+// ── State ────────────────────────────────────────────────────────────────────
+let log = [];
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2400);
+}
+function fmt(n) {
+  if (isNaN(n) || !isFinite(n)) return '—';
+  const abs = Math.abs(n), sign = n < 0 ? '−$' : '$';
+  if (abs >= 1000000) return sign + (abs/1000000).toFixed(2) + 'M';
+  if (abs >= 1000) return sign + (abs/1000).toFixed(1) + 'k';
+  return sign + abs.toFixed(0);
+}
+function fmtR(r) { return (isNaN(r)||!isFinite(r)) ? '—' : r.toFixed(2) + '×'; }
+function fmtP(r) { return (isNaN(r)||!isFinite(r)) ? '—' : (r*100).toFixed(1) + '%'; }
+function cls_elmm(r) { return r >= 2.5 ? 'safe' : r >= 1.8 ? 'warn' : 'crit'; }
+function cls_elnlv(r) { return r >= 0.40 ? 'safe' : r >= 0.25 ? 'warn' : 'crit'; }
+function msg_elmm(r) {
+  if (r >= 3.5) return 'Well above target. Consider whether capital is optimally deployed.';
+  if (r >= 2.5) return 'At target. Healthy operating range.';
+  if (r >= 1.8) return 'Above floor but below target. Monitor closely; limit new positions.';
+  if (r >= 1.3) return 'Below floor. Reduce exposure or add cash immediately.';
+  return 'Critical. Risk of margin call. Close or roll positions now.';
+}
+function msg_elnlv(r) {
+  if (r >= 0.65) return 'Very low utilisation. Significant capital idle — ensure cash is in T-bills.';
+  if (r >= 0.40) return 'Moderate utilisation. Healthy balance of buffer and deployment.';
+  if (r >= 0.25) return 'Elevated utilisation. Portfolio is meaningfully committed.';
+  return 'High utilisation. Limited unencumbered capital remaining.';
+}
+function barPct_elmm(r) { return Math.min(100, (r/4)*100); }
+function barPct_elnlv(r) { return Math.min(100, (r/0.80)*100); }
+function getInputs() {
+  return {
+    el: parseFloat(document.getElementById('el').value),
+    mm: parseFloat(document.getElementById('mm').value),
+    nlv: parseFloat(document.getElementById('nlv').value),
+  };
+}
+
+// ── Supabase log ops ─────────────────────────────────────────────────────────
+async function loadLog() {
+  showToast('Loading log…');
+  const { data, error } = await _sb
+    .from('margin_log')
+    .select('*')
+    .order('ts', { ascending: true });
+  if (error) { showToast('Load error: ' + error.message); return; }
+  log = (data || []).map(r => ({
+    ts: r.ts,
+    nlv: fmt(r.raw_nlv), el: fmt(r.raw_el), mm: fmt(r.raw_mm),
+    elmm: r.elmm, elnlv: r.elnlv,
+    c1: r.c1, c2: r.c2, overall: r.overall,
+    raw_nlv: r.raw_nlv, raw_el: r.raw_el, raw_mm: r.raw_mm
+  }));
+  renderLog();
+  showToast('Log loaded — ' + log.length + ' entries');
+}
+
+async function logEntry() {
+  const { el, mm, nlv } = getInputs();
+  if (!el || !mm || !nlv) return;
+  const elmm = el/mm, elnlv = el/nlv;
+  const c1 = cls_elmm(elmm), c2 = cls_elnlv(elnlv);
+  const overall = (c1==='crit'||c2==='crit')?'crit':(c1==='warn'||c2==='warn')?'warn':'safe';
+  const now = new Date();
+  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const ts = days[now.getDay()] + ' · '
+           + now.toLocaleDateString('en-SG',{day:'2-digit',month:'short',year:'numeric'})
+           + ' ' + now.toLocaleTimeString('en-SG',{hour:'2-digit',minute:'2-digit'});
+  const entry = {
+    ts, raw_nlv: nlv, raw_el: el, raw_mm: mm,
+    elmm: fmtR(elmm), elnlv: fmtP(elnlv), c1, c2, overall
+  };
+  const { error } = await _sb.from('margin_log').upsert(entry, { onConflict: 'ts' });
+  if (error) { showToast('Save error: ' + error.message); return; }
+  log.push({ ...entry, nlv: fmt(nlv), el: fmt(el), mm: fmt(mm) });
+  renderLog();
+  showToast('Logged · ' + ts);
+}
+
+async function clearLog() {
+  if (!confirm('Delete all log entries from the database?')) return;
+  const { error } = await _sb.from('margin_log').delete().neq('id', 0);
+  if (error) { showToast('Clear error: ' + error.message); return; }
+  log = [];
+  renderLog();
+  showToast('Log cleared');
+}
+
+// ── Scenario context ─────────────────────────────────────────────────────────
+function scenarioContext(eq, mm) {
+  if (eq >= 75) return 'Historical parallel: Great Depression 1929–32 (US equities −89%). Broker MM models under extreme duress; liquidity near-absent.';
+  if (eq >= 50) return 'Historical parallel: Great Depression early phase or severe sovereign crisis. Rare but documented in multi-year bear markets.';
+  if (eq >= 45) return 'Historical parallel: GFC 2008–09 peak-to-trough (S&P −57%). MM requirements spiked 100–200% on short options books at major brokers.';
+  if (eq >= 30) return 'Historical parallel: Dot-com bust 2000–02 (S&P −49%), COVID crash 2020 (S&P −34% in 5 weeks). Severe but recoverable within months to years.';
+  if (eq >= 18) return 'Historical parallel: Typical bear market correction. VIX 30–45 range. Common cyclical scenario — your primary planning range.';
+  return 'Mild pullback — normal market volatility. VIX 18–25 range.';
+}
+
+function onSlider() {
+  const ed = parseInt(document.getElementById('eq-drop').value);
+  const mr = parseInt(document.getElementById('mm-rise').value);
+  document.getElementById('eq-drop-val').textContent = '−' + ed + '%';
+  document.getElementById('mm-rise-val').textContent = '+' + mr + '%';
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('scenario-context').textContent = scenarioContext(ed, mr);
+  computeStress();
+}
+
+function setPreset(eq, mm, name) {
+  document.getElementById('eq-drop').value = eq;
+  document.getElementById('mm-rise').value = mm;
+  document.getElementById('eq-drop-val').textContent = '−' + eq + '%';
+  document.getElementById('mm-rise-val').textContent = '+' + mm + '%';
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.toggle('active', b.textContent.toLowerCase().startsWith(name)));
+  document.getElementById('scenario-context').textContent = scenarioContext(eq, mm);
+  computeStress();
+}
+
+// ── Stress computation ───────────────────────────────────────────────────────
+function computeStress() {
+  const { el, mm, nlv } = getInputs();
+  if (!el || !mm || !nlv) return;
+  const eqDrop = parseInt(document.getElementById('eq-drop').value) / 100;
+  const mmRise = parseInt(document.getElementById('mm-rise').value) / 100;
+  const s_nlv = nlv * (1 - eqDrop);
+  const s_el  = s_nlv - (nlv - el);
+  const s_mm  = mm * (1 + mmRise);
+  const s_elmm  = s_el / s_mm;
+  const s_elnlv = s_el / s_nlv;
+  const sc  = cls_elmm(s_elmm);
+  const sc2 = cls_elnlv(s_elnlv);
+  const scCol = sc==='safe'?'var(--green-bar)':sc==='warn'?'var(--amber-bar)':'var(--red-bar)';
+
+  const sve = document.getElementById('s-val-elmm');
+  sve.textContent = fmtR(s_elmm); sve.className = 'stress-mini-val ' + sc;
+  document.getElementById('s-bar-elmm').style.width = barPct_elmm(s_elmm) + '%';
+  document.getElementById('s-bar-elmm').className = 'bar-fill ' + sc;
+
+  const svn = document.getElementById('s-val-elnlv');
+  svn.textContent = fmtP(s_elnlv); svn.className = 'stress-mini-val ' + sc2;
+  document.getElementById('s-bar-elnlv').style.width = barPct_elnlv(s_elnlv) + '%';
+  document.getElementById('s-bar-elnlv').className = 'bar-fill ' + sc2;
+
+  document.getElementById('s-el').textContent = fmt(s_el);
+  document.getElementById('s-nlv-out').textContent = fmt(s_nlv);
+  document.getElementById('s-mm').textContent = fmt(s_mm);
+
+  const floorMM = s_mm * 1.8;
+  const buffer = s_el - floorMM;
+  const buf = document.getElementById('s-buffer');
+  buf.textContent = fmt(Math.abs(buffer)) + (buffer >= 0 ? ' above floor' : ' below floor');
+  buf.style.color = buffer >= 0 ? 'var(--green-bar)' : 'var(--red-bar)';
+
+  let verdict = '';
+  if (s_elmm >= 2.5) verdict = 'Stress scenario stays at target. Very resilient book.';
+  else if (s_elmm >= 1.8) verdict = 'Stress scenario holds above floor. Book is resilient.';
+  else if (s_elmm >= 1.3) verdict = 'Stress scenario breaches 1.8× floor. Consider reducing notional.';
+  else verdict = 'Stress scenario is critical — margin call risk. Reduce exposure now.';
+  const vd = document.getElementById('stress-verdict');
+  vd.textContent = verdict; vd.style.color = scCol;
+}
+
+// ── Main compute ─────────────────────────────────────────────────────────────
+function compute() {
+  const { el, mm, nlv } = getInputs();
+  if (!el || !mm || !nlv || mm <= 0 || nlv <= 0) {
+    document.getElementById('results').style.display = 'none';
+    document.getElementById('placeholder').style.display = 'block';
+    return;
+  }
+  document.getElementById('results').style.display = 'block';
+  document.getElementById('placeholder').style.display = 'none';
+
+  const elmm = el/mm, elnlv = el/nlv;
+  const c1 = cls_elmm(elmm), c2 = cls_elnlv(elnlv);
+
+  document.getElementById('val-elmm').textContent = fmtR(elmm);
+  document.getElementById('val-elmm').className = 'ratio-value ' + c1;
+  document.getElementById('card-elmm').className = 'ratio-card ' + c1;
+  document.getElementById('bar-elmm').style.width = barPct_elmm(elmm) + '%';
+  document.getElementById('bar-elmm').className = 'bar-fill ' + c1;
+  document.getElementById('badge-elmm').textContent = c1==='safe'?'safe':c1==='warn'?'watch':'critical';
+  document.getElementById('badge-elmm').className = 'badge ' + c1;
+  document.getElementById('msg-elmm').textContent = msg_elmm(elmm);
+
+  document.getElementById('val-elnlv').textContent = fmtP(elnlv);
+  document.getElementById('val-elnlv').className = 'ratio-value ' + c2;
+  document.getElementById('card-elnlv').className = 'ratio-card ' + c2;
+  document.getElementById('bar-elnlv').style.width = barPct_elnlv(elnlv) + '%';
+  document.getElementById('bar-elnlv').className = 'bar-fill ' + c2;
+  document.getElementById('badge-elnlv').textContent = c2==='safe'?'low use':c2==='warn'?'mid use':'high use';
+  document.getElementById('badge-elnlv').className = 'badge ' + c2;
+  document.getElementById('msg-elnlv').textContent = msg_elnlv(elnlv);
+
+  computeStress();
+  renderLog();
+}
+
+// ── Log render ───────────────────────────────────────────────────────────────
+function renderLog() {
+  const c = document.getElementById('log-entries');
+  if (!log.length) { c.innerHTML = '<div class="log-empty">No entries yet.</div>'; return; }
+  c.innerHTML = [...log].reverse().map(e => {
+    const col1 = e.c1==='safe'?'var(--green-bar)':e.c1==='warn'?'var(--amber-bar)':'var(--red-bar)';
+    const col2 = e.c2==='safe'?'var(--green-bar)':e.c2==='warn'?'var(--amber-bar)':'var(--red-bar)';
+    const bf = e.overall==='safe'?'var(--green-fill)':e.overall==='warn'?'var(--amber-fill)':'var(--red-fill)';
+    const bt = e.overall==='safe'?'var(--green-text)':e.overall==='warn'?'var(--amber-text)':'var(--red-text)';
+    return `<div class="log-entry">
+      <span style="color:var(--text-secondary);">${e.ts}</span>
+      <span style="color:var(--text-secondary);">${e.nlv||'—'}</span>
+      <span style="color:var(--text-secondary);">${e.el||'—'}</span>
+      <span style="color:var(--text-secondary);">${e.mm||'—'}</span>
+      <span style="color:${col1};">${e.elmm}</span>
+      <span style="color:${col2};">${e.elnlv}</span>
+      <span style="background:${bf};color:${bt};padding:1px 6px;border-radius:3px;font-size:10px;">${e.overall}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── CSV export ───────────────────────────────────────────────────────────────
+function exportCSV() {
+  if (!log.length) { showToast('No entries to export'); return; }
+  const rows = [['Date/Time','NLV','EL','MM','EL/MM','EL/NLV','Status']];
+  log.forEach(e => rows.push([e.ts, e.raw_nlv||'', e.raw_el||'', e.raw_mm||'', e.elmm, e.elnlv, e.overall]));
+  const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'el_mm_log_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  showToast('CSV exported');
+}
+
+['el','mm','nlv'].forEach(id => document.getElementById(id).addEventListener('input', compute));
+</script>
+</body>
+</html>
