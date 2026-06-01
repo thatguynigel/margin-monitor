@@ -119,15 +119,15 @@ body {
 .preset-crisis.active { background: var(--red-fill); color: var(--red-text); border-color: var(--red-bar); }
 .log-table-wrap { overflow-x: auto; }
 .log-header {
-  display: grid; grid-template-columns: 155px 72px 72px 72px 58px 62px 58px; gap: 6px;
+  display: grid; grid-template-columns: 155px 72px 72px 72px 48px 58px 62px 58px 58px; gap: 6px;
   font-size: 10px; color: var(--text-tertiary); font-family: var(--font-mono);
   letter-spacing: 0.06em; padding: 4px 0 6px; border-bottom: 0.5px solid var(--border);
-  min-width: 570px;
+  min-width: 690px;
 }
 .log-entry {
-  display: grid; grid-template-columns: 155px 72px 72px 72px 58px 62px 58px; gap: 6px;
+  display: grid; grid-template-columns: 155px 72px 72px 72px 48px 58px 62px 58px 58px; gap: 6px;
   font-size: 11px; font-family: var(--font-mono); padding: 6px 0;
-  border-bottom: 0.5px solid var(--border); align-items: center; min-width: 570px;
+  border-bottom: 0.5px solid var(--border); align-items: center; min-width: 690px;
 }
 .log-entry:last-child { border-bottom: none; }
 .log-scroll { max-height: 220px; overflow-y: auto; overflow-x: auto; }
@@ -210,6 +210,22 @@ h1 { font-size: 15px; font-weight: 500; color: var(--text-primary); font-family:
     <label>Net liq. value (NLV)</label>
     <input type="number" id="nlv" placeholder="e.g. 500000" min="1" step="1000" />
   </div>
+  <div class="input-row">
+    <label>VIX (at close)</label>
+    <input type="number" id="vix" placeholder="e.g. 18.5" min="0" step="0.1" />
+  </div>
+  <div class="input-row">
+    <label>Total put notional</label>
+    <input type="number" id="ntl" placeholder="e.g. 1500000" min="0" step="1000" />
+  </div>
+  <div class="input-row">
+    <label>Cash component</label>
+    <input type="number" id="cash" placeholder="e.g. 200000" min="0" step="1000" />
+  </div>
+  <div class="input-row">
+    <label>Equity component</label>
+    <input type="number" id="equity" placeholder="e.g. 300000" min="0" step="1000" />
+  </div>
 </div>
 
 <div id="results" style="display:none;">
@@ -241,6 +257,39 @@ h1 { font-size: 15px; font-weight: 500; color: var(--text-primary); font-family:
       <div class="bar-track"><div id="bar-elnlv" class="bar-fill" style="width:0%"></div></div>
       <div class="threshold-row"><span>0%</span><span>25%</span><span>50%</span><span>75%+</span></div>
       <div id="msg-elnlv" class="card-msg"></div>
+    </div>
+  </div>
+
+  <div id="composition-panel" style="display:none;">
+    <hr class="divider">
+    <div class="section-label">Capital composition — cash vs equity</div>
+
+    <div class="stress-results-grid">
+      <div class="stress-mini-card">
+        <div class="stress-mini-label">Cash coverage of MM (cash ÷ MM)</div>
+        <div id="cash-cov" class="stress-mini-val">—</div>
+        <div style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono);margin-top:3px;">if equity vanished, would cash alone meet MM?</div>
+        <div class="bar-track" style="margin-top:8px;"><div id="cash-cov-bar" class="bar-fill" style="width:0%"></div></div>
+      </div>
+      <div class="stress-mini-card">
+        <div class="stress-mini-label">NLV composition</div>
+        <div id="nlv-split" class="stress-mini-val" style="font-size:15px;">—</div>
+        <div style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono);margin-top:3px;">cash-heavy buffers survive stress</div>
+        <div class="bar-track" style="margin-top:8px; display:flex; gap:0;">
+          <div id="nlv-cash-bar" style="height:100%; background:var(--green-bar); border-radius:2px 0 0 2px;"></div>
+          <div id="nlv-eq-bar" style="height:100%; background:var(--amber-bar); border-radius:0 2px 2px 0;"></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:9px; color:var(--text-tertiary); font-family:var(--font-mono); margin-top:3px;">
+          <span style="color:var(--green-bar);">■ cash</span><span style="color:var(--amber-bar);">■ equity</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="stress-details">
+      <div class="stress-row"><span class="stress-label-txt">Entered NLV</span><span id="comp-nlv">—</span></div>
+      <div class="stress-row"><span class="stress-label-txt">Cash + Equity (cross-check)</span><span id="comp-sum">—</span></div>
+      <div class="stress-row"><span class="stress-label-txt">Cash as % of NLV</span><span id="comp-cashpct">—</span></div>
+      <div id="comp-verdict" class="stress-verdict"></div>
     </div>
   </div>
 
@@ -298,7 +347,7 @@ h1 { font-size: 15px; font-weight: 500; color: var(--text-primary); font-family:
 
   <div class="log-table-wrap">
   <div class="log-header">
-    <span>Date / time</span><span>NLV</span><span>EL</span><span>MM</span><span>EL/MM</span><span>EL/NLV</span><span>Status</span>
+    <span>Date / time</span><span>NLV</span><span>EL</span><span>MM</span><span>VIX</span><span>EL/MM</span><span>EL/NLV</span><span>MM/Ntl</span><span>Status</span>
   </div>
   <div class="log-scroll"><div id="log-entries"></div></div>
   </div>
@@ -376,7 +425,50 @@ function getInputs() {
     el: parseFloat(document.getElementById('el').value),
     mm: parseFloat(document.getElementById('mm').value),
     nlv: parseFloat(document.getElementById('nlv').value),
+    vix: parseFloat(document.getElementById('vix').value),
+    ntl: parseFloat(document.getElementById('ntl').value),
+    cash: parseFloat(document.getElementById('cash').value),
+    equity: parseFloat(document.getElementById('equity').value),
   };
+}
+
+function computeComposition() {
+  const { mm, nlv, cash, equity } = getInputs();
+  const panel = document.getElementById('composition-panel');
+  if (isNaN(cash) || isNaN(equity)) { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+
+  const sum = cash + equity;
+  const cashCov = mm > 0 ? cash / mm : 0;
+  const ccCls = cashCov >= 1.0 ? 'safe' : cashCov >= 0.6 ? 'warn' : 'crit';
+  const ccCol = ccCls==='safe'?'var(--green-bar)':ccCls==='warn'?'var(--amber-bar)':'var(--red-bar)';
+
+  const cc = document.getElementById('cash-cov');
+  cc.textContent = fmtR(cashCov);
+  cc.className = 'stress-mini-val ' + ccCls;
+  document.getElementById('cash-cov-bar').style.width = Math.min(100,(cashCov/1.5)*100) + '%';
+  document.getElementById('cash-cov-bar').className = 'bar-fill ' + ccCls;
+
+  const cashPct = sum > 0 ? (cash/sum*100) : 0;
+  document.getElementById('nlv-split').textContent = cashPct.toFixed(0) + '% / ' + (100-cashPct).toFixed(0) + '%';
+  document.getElementById('nlv-cash-bar').style.width = cashPct + '%';
+  document.getElementById('nlv-eq-bar').style.width = (100-cashPct) + '%';
+
+  document.getElementById('comp-nlv').textContent = isNaN(nlv) ? '—' : fmt(nlv);
+  document.getElementById('comp-sum').textContent = fmt(sum);
+  document.getElementById('comp-cashpct').textContent = cashPct.toFixed(1) + '%';
+
+  let verdict = '';
+  if (cashCov >= 1.0) verdict = 'Cash alone covers MM. Buffer fully survives a total equity collapse.';
+  else if (cashCov >= 0.6) verdict = 'Cash covers most of MM. Reasonably resilient, but partly reliant on equity holding.';
+  else verdict = 'Cash covers under 60% of MM. Buffer leans heavily on equity that degrades in a crisis — consider raising cash.';
+  // Cross-check warning
+  if (!isNaN(nlv) && Math.abs(sum - nlv) / nlv > 0.05) {
+    verdict += ' ⚠ Cash + equity differs from entered NLV by >5% — check your figures (option marks may explain a small gap).';
+  }
+  const vd = document.getElementById('comp-verdict');
+  vd.textContent = verdict;
+  vd.style.color = ccCol;
 }
 
 // ── Supabase log ops ─────────────────────────────────────────────────────────
@@ -390,16 +482,19 @@ async function loadLog() {
   log = (data || []).map(r => ({
     ts: r.ts,
     nlv: fmt(r.raw_nlv), el: fmt(r.raw_el), mm: fmt(r.raw_mm),
+    vix: (r.vix != null ? Number(r.vix).toFixed(1) : '—'),
+    mmntl: (r.raw_ntl && r.raw_ntl > 0 ? (r.raw_mm / r.raw_ntl * 100).toFixed(2) + '%' : '—'),
     elmm: r.elmm, elnlv: r.elnlv,
     c1: r.c1, c2: r.c2, overall: r.overall,
-    raw_nlv: r.raw_nlv, raw_el: r.raw_el, raw_mm: r.raw_mm
+    raw_nlv: r.raw_nlv, raw_el: r.raw_el, raw_mm: r.raw_mm, raw_vix: r.vix, raw_ntl: r.raw_ntl,
+    raw_cash: r.raw_cash, raw_equity: r.raw_equity
   }));
   renderLog();
   showToast('Log loaded — ' + log.length + ' entries');
 }
 
 async function logEntry() {
-  const { el, mm, nlv } = getInputs();
+  const { el, mm, nlv, vix, ntl, cash, equity } = getInputs();
   if (!el || !mm || !nlv) return;
   const elmm = el/mm, elnlv = el/nlv;
   const c1 = cls_elmm(elmm), c2 = cls_elnlv(elnlv);
@@ -411,11 +506,20 @@ async function logEntry() {
            + ' ' + now.toLocaleTimeString('en-SG',{hour:'2-digit',minute:'2-digit'});
   const entry = {
     ts, raw_nlv: nlv, raw_el: el, raw_mm: mm,
+    vix: (isNaN(vix) ? null : vix),
+    raw_ntl: (isNaN(ntl) ? null : ntl),
+    raw_cash: (isNaN(cash) ? null : cash),
+    raw_equity: (isNaN(equity) ? null : equity),
     elmm: fmtR(elmm), elnlv: fmtP(elnlv), c1, c2, overall
   };
   const { error } = await _sb.from('margin_log').upsert(entry, { onConflict: 'ts' });
   if (error) { showToast('Save error: ' + error.message); return; }
-  log.push({ ...entry, nlv: fmt(nlv), el: fmt(el), mm: fmt(mm) });
+  log.push({
+    ...entry,
+    nlv: fmt(nlv), el: fmt(el), mm: fmt(mm),
+    vix: (isNaN(vix)?'—':vix.toFixed(1)), raw_vix: (isNaN(vix)?null:vix),
+    mmntl: (!isNaN(ntl) && ntl > 0 ? (mm/ntl*100).toFixed(2)+'%' : '—')
+  });
   renderLog();
   showToast('Logged · ' + ts);
 }
@@ -461,12 +565,22 @@ function setPreset(eq, mm, name) {
 
 // ── Stress computation ───────────────────────────────────────────────────────
 function computeStress() {
-  const { el, mm, nlv } = getInputs();
+  const { el, mm, nlv, cash, equity } = getInputs();
   if (!el || !mm || !nlv) return;
   const eqDrop = parseInt(document.getElementById('eq-drop').value) / 100;
   const mmRise = parseInt(document.getElementById('mm-rise').value) / 100;
-  const s_nlv = nlv * (1 - eqDrop);
-  const s_el  = s_nlv - (nlv - el);
+
+  // If cash/equity known, degrade ONLY the equity portion (cash holds its value).
+  // Otherwise fall back to applying the drop to the whole NLV.
+  let s_nlv, s_el;
+  if (!isNaN(cash) && !isNaN(equity) && (cash + equity) > 0) {
+    const s_equity = equity * (1 - eqDrop);
+    s_nlv = cash + s_equity;
+    s_el  = s_nlv - (nlv - el);   // preserve the same non-cash/equity offset (e.g. option marks)
+  } else {
+    s_nlv = nlv * (1 - eqDrop);
+    s_el  = s_nlv - (nlv - el);
+  }
   const s_mm  = mm * (1 + mmRise);
   const s_elmm  = s_el / s_mm;
   const s_elnlv = s_el / s_nlv;
@@ -536,6 +650,7 @@ function compute() {
   document.getElementById('msg-elnlv').textContent = msg_elnlv(elnlv);
 
   computeStress();
+  computeComposition();
   renderLog();
 }
 
@@ -553,8 +668,10 @@ function renderLog() {
       <span style="color:var(--text-secondary);">${e.nlv||'—'}</span>
       <span style="color:var(--text-secondary);">${e.el||'—'}</span>
       <span style="color:var(--text-secondary);">${e.mm||'—'}</span>
+      <span style="color:var(--text-tertiary);">${e.vix||'—'}</span>
       <span style="color:${col1};">${e.elmm}</span>
       <span style="color:${col2};">${e.elnlv}</span>
+      <span style="color:var(--text-primary);">${e.mmntl||'—'}</span>
       <span style="background:${bf};color:${bt};padding:1px 6px;border-radius:3px;font-size:10px;">${e.overall}</span>
     </div>`;
   }).join('');
@@ -563,8 +680,13 @@ function renderLog() {
 // ── CSV export ───────────────────────────────────────────────────────────────
 function exportCSV() {
   if (!log.length) { showToast('No entries to export'); return; }
-  const rows = [['Date/Time','NLV','EL','MM','EL/MM','EL/NLV','Status']];
-  log.forEach(e => rows.push([e.ts, e.raw_nlv||'', e.raw_el||'', e.raw_mm||'', e.elmm, e.elnlv, e.overall]));
+  const rows = [['Date/Time','NLV','EL','MM','VIX','Notional','MM/Ntl%','Cash','Equity','Cash/MM','EL/MM','EL/NLV','Status']];
+  log.forEach(e => {
+    const mmntlPct = (e.raw_ntl && e.raw_ntl > 0) ? (e.raw_mm / e.raw_ntl * 100).toFixed(3) : '';
+    const cashCov = (e.raw_cash != null && e.raw_mm > 0) ? (e.raw_cash / e.raw_mm).toFixed(3) : '';
+    rows.push([e.ts, e.raw_nlv||'', e.raw_el||'', e.raw_mm||'', e.raw_vix||'', e.raw_ntl||'', mmntlPct,
+               e.raw_cash||'', e.raw_equity||'', cashCov, e.elmm, e.elnlv, e.overall]);
+  });
   const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
   const a = document.createElement('a');
   a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
@@ -573,7 +695,7 @@ function exportCSV() {
   showToast('CSV exported');
 }
 
-['el','mm','nlv'].forEach(id => document.getElementById(id).addEventListener('input', compute));
+['el','mm','nlv','vix','ntl','cash','equity'].forEach(id => document.getElementById(id).addEventListener('input', compute));
 </script>
 </body>
 </html>

@@ -1,6 +1,18 @@
 # Margin Monitor — Deployment Guide
 Cross-device EL/MM · EL/NLV daily monitor with cloud-synced log.
 
+> **UPDATING AN EXISTING DEPLOYMENT?** If your Supabase table already exists from a
+> previous version, run these commands in the Supabase SQL Editor to add the new columns:
+>
+> ```sql
+> alter table margin_log add column if not exists vix numeric;
+> alter table margin_log add column if not exists raw_ntl numeric;
+> alter table margin_log add column if not exists raw_cash numeric;
+> alter table margin_log add column if not exists raw_equity numeric;
+> ```
+>
+> Then just replace index.html on GitHub. Nothing else changes.
+
 ---
 
 ## Step 1 — Create a Supabase project
