@@ -272,7 +272,7 @@ h1 { font-size: 15px; font-weight: 500; color: var(--text-primary); font-family:
         <div class="bar-track" style="margin-top:8px;"><div id="cash-cov-bar" class="bar-fill" style="width:0%"></div></div>
       </div>
       <div class="stress-mini-card">
-        <div class="stress-mini-label">NLV composition</div>
+        <div class="stress-mini-label">Cash / equity mix (of cash + stock)</div>
         <div id="nlv-split" class="stress-mini-val" style="font-size:15px;">—</div>
         <div style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono);margin-top:3px;">cash-heavy buffers survive stress</div>
         <div class="bar-track" style="margin-top:8px; display:flex; gap:0;">
@@ -280,14 +280,15 @@ h1 { font-size: 15px; font-weight: 500; color: var(--text-primary); font-family:
           <div id="nlv-eq-bar" style="height:100%; background:var(--amber-bar); border-radius:0 2px 2px 0;"></div>
         </div>
         <div style="display:flex; justify-content:space-between; font-size:9px; color:var(--text-tertiary); font-family:var(--font-mono); margin-top:3px;">
-          <span style="color:var(--green-bar);">■ cash</span><span style="color:var(--amber-bar);">■ equity</span>
+          <span style="color:var(--green-bar);">■ cash</span><span style="color:var(--amber-bar);">■ stock</span>
         </div>
       </div>
     </div>
 
     <div class="stress-details">
       <div class="stress-row"><span class="stress-label-txt">Entered NLV</span><span id="comp-nlv">—</span></div>
-      <div class="stress-row"><span class="stress-label-txt">Cash + Equity (cross-check)</span><span id="comp-sum">—</span></div>
+      <div class="stress-row"><span class="stress-label-txt">Cash + stock (long assets)</span><span id="comp-sum">—</span></div>
+      <div class="stress-row"><span class="stress-label-txt">Implied options/other (NLV − cash − stock)</span><span id="comp-implied">—</span></div>
       <div class="stress-row"><span class="stress-label-txt">Cash as % of NLV</span><span id="comp-cashpct">—</span></div>
       <div id="comp-verdict" class="stress-verdict"></div>
     </div>
@@ -454,18 +455,20 @@ function computeComposition() {
   document.getElementById('nlv-cash-bar').style.width = cashPct + '%';
   document.getElementById('nlv-eq-bar').style.width = (100-cashPct) + '%';
 
+  // Cash as a share of TOTAL account (NLV), not of cash+equity
+  const cashOfNlv = (!isNaN(nlv) && nlv > 0) ? (cash/nlv*100) : null;
   document.getElementById('comp-nlv').textContent = isNaN(nlv) ? '—' : fmt(nlv);
   document.getElementById('comp-sum').textContent = fmt(sum);
-  document.getElementById('comp-cashpct').textContent = cashPct.toFixed(1) + '%';
+  // Implied short-option/other = NLV − (cash + equity). For a short-put seller this is
+  // normally NEGATIVE (your net option liability) — it is expected, not an input error.
+  const implied = (!isNaN(nlv)) ? (nlv - sum) : null;
+  document.getElementById('comp-implied').textContent = (implied === null) ? '—' : fmt(implied);
+  document.getElementById('comp-cashpct').textContent = (cashOfNlv === null) ? '—' : cashOfNlv.toFixed(1) + '%';
 
   let verdict = '';
   if (cashCov >= 1.0) verdict = 'Cash alone covers MM. Buffer fully survives a total equity collapse.';
   else if (cashCov >= 0.6) verdict = 'Cash covers most of MM. Reasonably resilient, but partly reliant on equity holding.';
   else verdict = 'Cash covers under 60% of MM. Buffer leans heavily on equity that degrades in a crisis — consider raising cash.';
-  // Cross-check warning
-  if (!isNaN(nlv) && Math.abs(sum - nlv) / nlv > 0.05) {
-    verdict += ' ⚠ Cash + equity differs from entered NLV by >5% — check your figures (option marks may explain a small gap).';
-  }
   const vd = document.getElementById('comp-verdict');
   vd.textContent = verdict;
   vd.style.color = ccCol;
@@ -570,18 +573,25 @@ function computeStress() {
   const eqDrop = parseInt(document.getElementById('eq-drop').value) / 100;
   const mmRise = parseInt(document.getElementById('mm-rise').value) / 100;
 
-  // If cash/equity known, degrade ONLY the equity portion (cash holds its value).
-  // Otherwise fall back to applying the drop to the whole NLV.
-  let s_nlv, s_el;
+  // Stressed MM: requirement rises with volatility
+  const s_mm = mm * (1 + mmRise);
+
+  // Stressed NLV: in a drawdown only the EQUITY (long stock) portion falls; cash holds,
+  // and the short-option side is captured via the MM increase (not re-marked here).
+  // Anchor on the REAL entered NLV and subtract only the equity loss — this avoids
+  // distortion when cash+equity ≠ NLV (the difference is your short-option liability).
+  //   if cash/equity known → ΔNLV = −equity × eqDrop
+  //   else (conservative)  → ΔNLV = −nlv × eqDrop  (whole NLV treated as exposed)
+  let s_nlv;
   if (!isNaN(cash) && !isNaN(equity) && (cash + equity) > 0) {
-    const s_equity = equity * (1 - eqDrop);
-    s_nlv = cash + s_equity;
-    s_el  = s_nlv - (nlv - el);   // preserve the same non-cash/equity offset (e.g. option marks)
+    s_nlv = nlv - equity * eqDrop;
   } else {
     s_nlv = nlv * (1 - eqDrop);
-    s_el  = s_nlv - (nlv - el);
   }
-  const s_mm  = mm * (1 + mmRise);
+
+  // Stressed EL = baseline EL adjusted by BOTH effects: ΔEL = ΔNLV − ΔMM
+  const s_el = el + (s_nlv - nlv) - (s_mm - mm);
+
   const s_elmm  = s_el / s_mm;
   const s_elnlv = s_el / s_nlv;
   const sc  = cls_elmm(s_elmm);
