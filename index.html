@@ -480,7 +480,7 @@ async function loadLog() {
   const { data, error } = await _sb
     .from('margin_log')
     .select('*')
-    .order('ts', { ascending: true });
+    .order('created_at', { ascending: true });
   if (error) { showToast('Load error: ' + error.message); return; }
   log = (data || []).map(r => ({
     ts: r.ts,
