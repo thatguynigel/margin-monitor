@@ -103,3 +103,4 @@ Open the Vercel URL on any device. Enter your PIN. Log entries are saved to Supa
 ## Security note
 
 The anon key is visible in the HTML source. For a personal tool this is acceptable — Supabase's Row Level Security limits what the key can do. Do not share the URL publicly if you want to keep your financial data private. For stronger security, add Supabase Auth email/password login in a future version.
+
