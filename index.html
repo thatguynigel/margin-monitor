@@ -294,6 +294,43 @@ h1 { font-size: 15px; font-weight: 500; color: var(--text-primary); font-family:
     </div>
   </div>
 
+  <div id="sens-panel">
+    <hr class="divider">
+    <div class="section-label">Volatility sensitivity — MM/Notional vs VIX</div>
+    <p style="font-size:11px;color:var(--text-tertiary);font-family:var(--font-mono);margin-bottom:10px;line-height:1.6;">
+      Regression is run <em>within</em> stable-notional blocks only, so your own position changes don't contaminate the volatility signal.
+    </p>
+
+    <div class="stress-results-grid">
+      <div class="stress-mini-card">
+        <div class="stress-mini-label">Sensitivity (best block)</div>
+        <div id="sens-slope" class="stress-mini-val">—</div>
+        <div id="sens-slope-sub" style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono);margin-top:3px;">MM/Ntl-pts per VIX point</div>
+      </div>
+      <div class="stress-mini-card">
+        <div class="stress-mini-label">Fit quality (r²)</div>
+        <div id="sens-r2" class="stress-mini-val">—</div>
+        <div id="sens-r2-sub" style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono);margin-top:3px;">—</div>
+      </div>
+    </div>
+
+    <div style="margin:12px 0 6px;">
+      <div class="section-label" style="margin:0 0 6px;">Stable-notional blocks</div>
+      <div class="log-table-wrap">
+        <div id="sens-blocks-head" style="display:grid; grid-template-columns: 96px 44px 96px 78px 58px 84px; gap:6px; font-size:10px; color:var(--text-tertiary); font-family:var(--font-mono); letter-spacing:0.06em; padding:4px 0 6px; border-bottom:0.5px solid var(--border); min-width:470px;">
+          <span>Notional</span><span>n</span><span>VIX range</span><span>Slope</span><span>r²</span><span>Status</span>
+        </div>
+        <div id="sens-blocks" style="min-width:470px;"></div>
+      </div>
+    </div>
+
+    <div class="stress-details" style="margin-top:10px;">
+      <div style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono);letter-spacing:0.06em;margin-bottom:6px;">PROJECTED MM AT HIGHER VIX (from current position)</div>
+      <div id="sens-proj"></div>
+      <div id="sens-caveat" class="stress-verdict"></div>
+    </div>
+  </div>
+
   <hr class="divider">
 
   <div class="section-label">Stress scenario simulator</div>
@@ -433,8 +470,142 @@ function getInputs() {
   };
 }
 
-function computeComposition() {
-  const { mm, nlv, cash, equity } = getInputs();
+// ── Volatility sensitivity: MM/Notional vs VIX within stable-notional blocks ──
+const SENS_MIN_N   = 4;    // minimum observations for a reportable slope
+const SENS_MIN_VIX = 1.0;  // minimum VIX spread within block
+
+function linreg(xs, ys) {
+  const n = xs.length;
+  if (n < 2) return null;
+  const mx = xs.reduce((a,b)=>a+b,0)/n;
+  const my = ys.reduce((a,b)=>a+b,0)/n;
+  let sxy=0, sxx=0, syy=0;
+  for (let i=0;i<n;i++){
+    const dx=xs[i]-mx, dy=ys[i]-my;
+    sxy+=dx*dy; sxx+=dx*dx; syy+=dy*dy;
+  }
+  if (sxx === 0) return null;
+  const slope = sxy/sxx;
+  const r2 = (syy === 0) ? 0 : (sxy*sxy)/(sxx*syy);
+  return { slope, intercept: my - slope*mx, r2, n };
+}
+
+// Group consecutive log entries sharing the same notional. A notional change
+// starts a new block, since position composition (not just size) has changed.
+function buildBlocks() {
+  const blocks = [];
+  let cur = null;
+  for (const e of log) {
+    const ntl = Number(e.raw_ntl), mm = Number(e.raw_mm);
+    if (!ntl || ntl <= 0 || !mm) { continue; }
+    if (!cur || cur.ntl !== ntl) {
+      cur = { ntl, xs: [], ys: [], count: 0 };
+      blocks.push(cur);
+    }
+    cur.count++;
+    const vix = Number(e.raw_vix);
+    if (e.raw_vix != null && !isNaN(vix)) {
+      cur.xs.push(vix);
+      cur.ys.push(mm/ntl*100);
+    }
+  }
+  return blocks;
+}
+
+function renderSensitivity() {
+  const blocksEl = document.getElementById('sens-blocks');
+  if (!blocksEl) return;
+  const blocks = buildBlocks();
+
+  const rows = [];
+  let best = null;
+  for (const b of blocks) {
+    const n = b.xs.length;
+    const vmin = n ? Math.min(...b.xs) : null;
+    const vmax = n ? Math.max(...b.xs) : null;
+    const spread = n ? (vmax - vmin) : 0;
+    const ok = n >= SENS_MIN_N && spread >= SENS_MIN_VIX;
+    const fit = ok ? linreg(b.xs, b.ys) : null;
+    const rec = { ntl: b.ntl, n, vmin, vmax, spread, fit, ok };
+    rows.push(rec);
+    if (fit && (!best || fit.n > best.fit.n)) best = rec;
+  }
+
+  // Block table
+  if (!rows.length) {
+    blocksEl.innerHTML = '<div class="log-empty">No logged entries yet.</div>';
+  } else {
+    blocksEl.innerHTML = rows.map(r => {
+      const statusTxt = r.ok ? 'usable' : (r.n < SENS_MIN_N ? 'too few pts' : 'VIX too flat');
+      const col = r.ok ? 'var(--green-bar)' : 'var(--text-tertiary)';
+      const slopeTxt = r.fit ? (r.fit.slope>=0?'+':'') + r.fit.slope.toFixed(3) : '—';
+      const r2Txt = r.fit ? r.fit.r2.toFixed(2) : '—';
+      const vixTxt = r.n ? r.vmin.toFixed(1)+'–'+r.vmax.toFixed(1) : '—';
+      return `<div style="display:grid; grid-template-columns:96px 44px 96px 78px 58px 84px; gap:6px; font-size:11px; font-family:var(--font-mono); padding:5px 0; border-bottom:0.5px solid var(--border); align-items:center;">
+        <span style="color:var(--text-secondary);">${fmt(r.ntl)}</span>
+        <span style="color:var(--text-secondary);">${r.n}</span>
+        <span style="color:var(--text-tertiary);">${vixTxt}</span>
+        <span style="color:var(--text-primary);">${slopeTxt}</span>
+        <span style="color:var(--text-tertiary);">${r2Txt}</span>
+        <span style="color:${col}; font-size:10px;">${statusTxt}</span>
+      </div>`;
+    }).join('');
+  }
+
+  const slopeEl = document.getElementById('sens-slope');
+  const r2El    = document.getElementById('sens-r2');
+  const projEl  = document.getElementById('sens-proj');
+  const cavEl   = document.getElementById('sens-caveat');
+
+  if (!best) {
+    slopeEl.textContent = '—'; slopeEl.className = 'stress-mini-val';
+    document.getElementById('sens-slope-sub').textContent = 'need ≥' + SENS_MIN_N + ' pts and ≥' + SENS_MIN_VIX + ' VIX spread in one block';
+    r2El.textContent = '—'; r2El.className = 'stress-mini-val';
+    document.getElementById('sens-r2-sub').textContent = '—';
+    projEl.innerHTML = '<div style="font-size:11px;color:var(--text-tertiary);font-family:var(--font-mono);">Not enough data in any single stable-notional block yet.</div>';
+    cavEl.textContent = ''; return;
+  }
+
+  const s = best.fit;
+  slopeEl.textContent = (s.slope>=0?'+':'') + s.slope.toFixed(3);
+  slopeEl.className = 'stress-mini-val';
+  document.getElementById('sens-slope-sub').textContent =
+    'MM/Ntl-pts per VIX pt · n=' + s.n + ' · notional ' + fmt(best.ntl);
+
+  const q = s.r2 >= 0.7 ? 'safe' : s.r2 >= 0.4 ? 'warn' : 'crit';
+  r2El.textContent = s.r2.toFixed(2);
+  r2El.className = 'stress-mini-val ' + q;
+  document.getElementById('sens-r2-sub').textContent =
+    s.r2 >= 0.7 ? 'strong — VIX explains most variation'
+    : s.r2 >= 0.4 ? 'moderate — other factors also at work'
+    : 'weak — treat slope as unreliable';
+
+  // Projection from CURRENT position
+  const { mm, ntl, vix } = getInputs();
+  if (isNaN(mm) || isNaN(ntl) || ntl <= 0 || isNaN(vix)) {
+    projEl.innerHTML = '<div style="font-size:11px;color:var(--text-tertiary);font-family:var(--font-mono);">Enter MM, notional and VIX above to project.</div>';
+  } else {
+    const baseMMNtl = mm/ntl*100;
+    const targets = [20,25,30,40,60];
+    projEl.innerHTML = targets.map(v => {
+      const pred = baseMMNtl + s.slope*(v - vix);
+      const chg = (pred/baseMMNtl - 1)*100;
+      const projMM = mm*(1+chg/100);
+      const extrap = v > best.vmax;
+      const col = extrap ? 'var(--amber-bar)' : 'var(--text-primary)';
+      return `<div class="stress-row">
+        <span class="stress-label-txt">VIX ${v}${extrap?' *':''}</span>
+        <span style="color:${col};">${pred.toFixed(1)}% · MM ${fmt(projMM)} (${chg>=0?'+':''}${chg.toFixed(0)}%)</span>
+      </div>`;
+    }).join('');
+  }
+
+  cavEl.innerHTML = '* Beyond your observed VIX range (max ' + best.vmax.toFixed(1) +
+    '). MM sensitivity steepens non-linearly in real stress, so linear projection here <strong>understates</strong> the crisis requirement — use the stress simulator presets for tail planning, not these figures.';
+  cavEl.style.color = 'var(--amber-bar)';
+}
+
+function computeComposition() {  const { mm, nlv, cash, equity } = getInputs();
   const panel = document.getElementById('composition-panel');
   if (isNaN(cash) || isNaN(equity)) { panel.style.display = 'none'; return; }
   panel.style.display = 'block';
@@ -493,6 +664,7 @@ async function loadLog() {
     raw_cash: r.raw_cash, raw_equity: r.raw_equity
   }));
   renderLog();
+  renderSensitivity();
   showToast('Log loaded — ' + log.length + ' entries');
 }
 
@@ -524,6 +696,7 @@ async function logEntry() {
     mmntl: (!isNaN(ntl) && ntl > 0 ? (mm/ntl*100).toFixed(2)+'%' : '—')
   });
   renderLog();
+  renderSensitivity();
   showToast('Logged · ' + ts);
 }
 
@@ -662,6 +835,7 @@ function compute() {
   computeStress();
   computeComposition();
   renderLog();
+  renderSensitivity();
 }
 
 // ── Log render ───────────────────────────────────────────────────────────────
